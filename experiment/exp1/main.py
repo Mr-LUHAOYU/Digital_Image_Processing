@@ -5,14 +5,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
-image_path = "1.png"
+INTERS = ['NEAREST', 'LANCZOS', 'BILINEAR', 'BICUBIC', 'BOX', 'HAMMING']
+image_path = "img.jpeg"
 image1 = Image.open(image_path)
 current_image = image1
 scale_factor = 1.0
 angle_total = 0.0
 isGray = False
-current_INTER = cv2.INTER_LINEAR
+current_INTER = 2
 current_channels = [0, 1, 2]
+flip_and_concatenate = False
+bitnot = False
 
 
 def cal_convertList(channels):
@@ -44,29 +47,23 @@ def to_grayscale(image):
 
 
 def selectINTER(INTER: str):
-    if INTER == 'NEAREST':
-        return cv2.INTER_NEAREST
-    elif INTER == 'LINEAR':
-        return cv2.INTER_LINEAR
-    elif INTER == 'CUBIC':
-        return cv2.INTER_CUBIC
-    elif INTER == 'AREA':
-        return cv2.INTER_AREA
-    elif INTER == 'LANCZOS4':
-        return cv2.INTER_LANCZOS4
-    else:
-        return cv2.INTER_LINEAR
+    return INTERS.index(INTER)
 
 
-def rotate_image(image, angle, scale, INTER):
+def rotate_image(image, angle: float, scale: float, INTER):
+    scale *= 0.3
+    new_image = image.resize(
+        (int(image.size[0] * scale), int(image.size[1] * scale)),
+        resample=INTER
+    )
+    new_image = new_image.rotate(angle, expand=True)
+    return new_image
+
+
+def bitwise_not(image):
     img_np = np.array(image)
-    if not isGray:
-        rows, cols, channels = img_np.shape
-    else:
-        rows, cols = img_np.shape
-    M = cv2.getRotationMatrix2D((cols / 2, rows / 2), angle, scale)
-    rotated_img = cv2.warpAffine(img_np, M, (cols, rows), flags=INTER, borderValue=(255, 255))
-    return Image.fromarray(rotated_img, 'L') if isGray else Image.fromarray(rotated_img, 'RGBA')
+    not_img = cv2.bitwise_not(img_np)
+    return Image.fromarray(not_img)
 
 
 root = tk.Tk()
@@ -83,7 +80,10 @@ operation_label = ttk.Label(left_frame, text="Select Operation:")
 operation_label.pack(pady=20)
 
 operation_menu = ttk.Combobox(left_frame, textvariable=operation_var, state='readonly')
-operation_menu['values'] = ("Original Image", "Swap Color Channels", "Grayscale", "Rotate")
+operation_menu['values'] = (
+    "Original Image", "Swap Color Channels", "Grayscale",
+    "Rotate", "Flip and Concatenate", "Bitwise Not",
+)
 operation_menu.pack(pady=20)
 
 angle_label = ttk.Label(left_frame, text="Rotation Angle (degrees):")
@@ -98,11 +98,11 @@ scale_default = tk.StringVar(value="1.0")
 scale_entry = ttk.Entry(left_frame, textvariable=scale_default)
 scale_entry.pack(pady=10)
 
-INTER_var = tk.StringVar(value="LINEAR")
+INTER_var = tk.StringVar(value="BILINEAR")
 INTER_label = ttk.Label(left_frame, text="Interpolation Method:")
 INTER_label.pack(pady=10)
 INTER_menu = ttk.Combobox(left_frame, textvariable=INTER_var, state='readonly')
-INTER_menu['values'] = ("NEAREST", "LINEAR", "CUBIC", "AREA", "LANCZOS4")
+INTER_menu['values'] = INTERS
 INTER_menu.pack(pady=10)
 
 channel_label = ttk.Label(left_frame, text="Color Channels to Swap:")
@@ -113,20 +113,35 @@ channel_menu['values'] = ("RGB", "RBG", "GRB", "GBR", "BGR", "BRG")
 channel_menu.pack(pady=10)
 
 image_label = ttk.Label(right_frame)
-image_label.pack(pady=10)
+image_label.pack(pady=10, fill=tk.BOTH, expand=True)
 
 
 def init_image():
-    global angle_total, scale_factor, isGray, current_INTER, current_channels
+    global angle_total, scale_factor, isGray, current_INTER, current_channels, \
+        flip_and_concatenate, bitnot
     angle_total = 0.0
     scale_factor = 1.0
     isGray = False
-    current_INTER = cv2.INTER_LINEAR
+    current_INTER = 2
     current_channels = [0, 1, 2]
+    flip_and_concatenate = False
+    bitnot = False
+
+
+def flip8concatenate(img):
+    imgLD = img.copy()
+    imgLU = cv2.flip(imgLD, 0)
+    imgRU = cv2.flip(imgLU, 1)
+    imgRD = cv2.flip(imgLD, 1)
+    left = np.concatenate((imgLU, imgLD), axis=0)
+    right = np.concatenate((imgRU, imgRD), axis=0)
+    imgMerge = np.concatenate((left, right), axis=1)
+    return imgMerge
 
 
 def update_image(*args, **kwargs):
-    global angle_total, scale_factor, isGray, current_INTER, current_channels
+    global angle_total, scale_factor, isGray, current_INTER, current_channels, \
+        flip_and_concatenate, bitnot
     operation = kwargs.get('operation', 'Original Image')
     if operation == "Original Image":
         init_image()
@@ -143,11 +158,16 @@ def update_image(*args, **kwargs):
             angle_total += angle + 360
             angle_total %= 360
             scale_factor *= scale
-            current_INTER = selectINTER(kwargs.get('INTER', 'LINEAR'))
-        except ValueError:
+            current_INTER = selectINTER(kwargs.get('INTER', 'BILINEAR'))
+        except ValueError as e:
+            print(e)
             angle_entry.delete(0, tk.END)
             scale_entry.delete(0, tk.END)
             init_image()
+    elif operation == "Flip and Concatenate":
+        flip_and_concatenate = not flip_and_concatenate
+    elif operation == "Bitwise Not":
+        bitnot = not bitnot
     else:
         init_image()
     display_image()
@@ -158,18 +178,21 @@ def display_image():
     if isGray:
         img = to_grayscale(img)
     else:
-        img = swap_color_channels(img, current_channels+[3])
+        img = swap_color_channels(img, current_channels)
     img = rotate_image(img, angle_total, scale_factor, current_INTER)
-
-    siz = (np.array(image1.size) * 0.5).astype(int).tolist()
-    img_resized = img.resize(siz)
-    img_tk = ImageTk.PhotoImage(img_resized)
+    if flip_and_concatenate:
+        img = Image.fromarray(flip8concatenate(np.array(img)))
+    if bitnot:
+        img = bitwise_not(img)
+    img_tk = ImageTk.PhotoImage(img)
     image_label.config(image=img_tk)
     image_label.image = img_tk
 
 
-operation_menu.bind("<<ComboboxSelected>>", lambda e: update_image(operation=operation_var.get()))
+operation_menu.bind("<<ComboboxSelected>>",
+                    lambda e: update_image(operation=operation_var.get(), INTER=INTER_var.get()))
 INTER_menu.bind("<<ComboboxSelected>>", lambda e: update_image(operation='Rotate', INTER=INTER_var.get()))
-channel_menu.bind("<<ComboboxSelected>>", lambda e: update_image(operation='Swap Color Channels', channels=channel_default.get()))
+channel_menu.bind("<<ComboboxSelected>>",
+                  lambda e: update_image(operation='Swap Color Channels', channels=channel_default.get()))
 update_image()
 root.mainloop()
