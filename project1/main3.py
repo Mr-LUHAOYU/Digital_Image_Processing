@@ -2,7 +2,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
-f = np.array(Image.open('img.png'))
+f = np.array(Image.open('img.jpeg'))
 
 
 def bilinear_interpolate(f, x, y):
@@ -27,27 +27,49 @@ def show_image(img, title):
     plt.show()
 
 
-def rotate_image(f, angle):
+def rotate_image(f, angle, expand=True):
     h, w = f.shape[:2]
     cx, cy = w / 2, h / 2
     angle_rad = np.radians(angle)
 
-    new_img = np.zeros_like(f)
+    corners = np.array([
+        [-cx, -cy], [w - cx, -cy],
+        [-cx, h - cy], [w - cx, h - cy]
+    ])
 
-    for i in range(h):
-        for j in range(w):
-            # 中心点旋转公式
-            x_shifted = j - cx
-            y_shifted = i - cy
+    rotation_matrix = np.array([
+        [np.cos(angle_rad), np.sin(angle_rad)],
+        [-np.sin(angle_rad), np.cos(angle_rad)]
+    ])
 
-            new_x_shifted = x_shifted * np.cos(angle_rad) + y_shifted * np.sin(angle_rad)
-            new_y_shifted = -x_shifted * np.sin(angle_rad) + y_shifted * np.cos(angle_rad)
+    new_corners = np.dot(corners, rotation_matrix.T)
 
-            new_x = new_x_shifted + cx
-            new_y = new_y_shifted + cy
+    min_x, min_y = np.min(new_corners, axis=0)
+    max_x, max_y = np.max(new_corners, axis=0)
 
-            if 0 <= new_x <= w - 1 and 0 <= new_y <= h - 1:
-                new_img[i, j] = bilinear_interpolate(f, new_x, new_y)
+    new_w = int(np.ceil(max_x - min_x))
+    new_h = int(np.ceil(max_y - min_y))
+
+    new_cx, new_cy = new_w / 2, new_h / 2
+
+    new_img = np.zeros((new_h, new_w, f.shape[2]), dtype=f.dtype) if len(f.shape) == 3 else np.zeros((new_h, new_w),
+                                                                                                     dtype=f.dtype)
+
+    for i in range(new_h):
+        for j in range(new_w):
+            x_shifted = j - new_cx
+            y_shifted = i - new_cy
+
+            original_x_shifted = x_shifted * np.cos(-angle_rad) + y_shifted * np.sin(-angle_rad)
+            original_y_shifted = -x_shifted * np.sin(-angle_rad) + y_shifted * np.cos(-angle_rad)
+
+            original_x = original_x_shifted + cx
+            original_y = original_y_shifted + cy
+
+            if 0 <= original_x < w and 0 <= original_y < h:
+                new_img[i, j] = bilinear_interpolate(f, original_x, original_y)
+            else:
+                new_img[i, j] = 255
 
     return new_img
 
@@ -105,3 +127,4 @@ scaled_img = scale_image(sheared_img, 0.6, 0.6)
 show_image(scaled_img, "Scaled Image (kx=ky=0.6)")
 
 show_image(scaled_img, "Final Transformed Image")
+# show_image(scale_image(rotate_image(f, 80), 1.2, 1.2), '')
