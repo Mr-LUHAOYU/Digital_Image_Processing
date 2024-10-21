@@ -16,6 +16,7 @@ current_INTER = 2
 current_channels = [0, 1, 2]
 flip_and_concatenate = False
 bitnot = False
+current_grayMethod = 'L'
 
 
 def cal_convertList(channels):
@@ -41,8 +42,25 @@ def swap_color_channels(image, convert_list):
     return Image.fromarray(swapped_img)
 
 
-def to_grayscale(image):
-    gray_image = image.convert('L')
+def to_grayscale(image, method='L'):
+    if method == 'L':
+        img_np = np.array(image)
+        gray_img = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        gray_image = Image.fromarray(gray_img)
+    elif method == 'average':
+        img_np = np.array(image)
+        gray_img = np.mean(img_np, axis=2)
+        gray_image = Image.fromarray(gray_img)
+    elif method == 'max':
+        img_np = np.array(image)
+        gray_img = np.max(img_np, axis=2)
+        gray_image = Image.fromarray(gray_img)
+    elif method == 'min':
+        img_np = np.array(image)
+        gray_img = np.min(img_np, axis=2)
+        gray_image = Image.fromarray(gray_img)
+    else:
+        raise ValueError('Invalid method for grayscale conversion.')
     return gray_image
 
 
@@ -112,13 +130,20 @@ channel_menu = ttk.Combobox(left_frame, textvariable=channel_default, state='rea
 channel_menu['values'] = ("RGB", "RBG", "GRB", "GBR", "BGR", "BRG")
 channel_menu.pack(pady=10)
 
+gray_label = ttk.Label(left_frame, text="Grayscale Conversion Method:")
+gray_label.pack(pady=10)
+gray_default = tk.StringVar(value="L")
+gray_menu = ttk.Combobox(left_frame, textvariable=gray_default, state='readonly')
+gray_menu['values'] = ("L", "average", "max", "min", "mean")
+gray_menu.pack(pady=10)
+
 image_label = ttk.Label(right_frame)
 image_label.pack(pady=10, fill=tk.BOTH, expand=True)
 
 
 def init_image():
     global angle_total, scale_factor, isGray, current_INTER, current_channels, \
-        flip_and_concatenate, bitnot
+        flip_and_concatenate, bitnot, current_grayMethod
     angle_total = 0.0
     scale_factor = 1.0
     isGray = False
@@ -141,7 +166,7 @@ def flip8concatenate(img):
 
 def update_image(*args, **kwargs):
     global angle_total, scale_factor, isGray, current_INTER, current_channels, \
-        flip_and_concatenate, bitnot
+        flip_and_concatenate, bitnot, current_grayMethod
     operation = kwargs.get('operation', 'Original Image')
     if operation == "Original Image":
         init_image()
@@ -150,7 +175,9 @@ def update_image(*args, **kwargs):
         channels = cal_convertList(channels)
         current_channels = merge_color_channels(current_channels, channels)
     elif operation == "Grayscale":
-        isGray = not isGray
+        new_method = kwargs.get('method', 'L')
+        isGray = new_method != current_grayMethod
+        current_grayMethod = new_method
     elif operation == "Rotate":
         try:
             angle = float(angle_entry.get())
@@ -194,5 +221,6 @@ operation_menu.bind("<<ComboboxSelected>>",
 INTER_menu.bind("<<ComboboxSelected>>", lambda e: update_image(operation='Rotate', INTER=INTER_var.get()))
 channel_menu.bind("<<ComboboxSelected>>",
                   lambda e: update_image(operation='Swap Color Channels', channels=channel_default.get()))
+gray_menu.bind("<<ComboboxSelected>>", lambda e: update_image(operation='Grayscale', method=gray_default.get()))
 update_image()
 root.mainloop()
