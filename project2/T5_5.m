@@ -4,24 +4,21 @@ function histogram_equalization_example()
     k = 7;
 
     img = [ones(n/2, m); zeros(n/2, m)];
-    img = img;
-    
+    img = img';
+
     display(img, k);
     
     hist = histcounts(img, 0:k);
-    cdf = cumsum(hist);
-    
-    cdf_normalized = cdf * max(hist) / max(cdf);
-    
-    cdf_m = cdf;
-    cdf_m(cdf == 0) = [];
-    if ~isempty(cdf_m)
-        cdf_m = (cdf_m - min(cdf_m)) * k / (max(cdf_m) - min(cdf_m));
-        cdf(cdf > 0) = round(cdf_m);
-    end
-    image_new = cdf(img + 1);
 
-    display(image_new, k);
+    cdf = hist / sum(hist) * k;
+    
+    cdf = cumsum(cdf);
+    
+    cdf = round(cdf);
+    
+    img_new = cdf(img + 1);
+
+    display(img_new, k)
 end
 
 function display(image, k)

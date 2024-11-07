@@ -5,8 +5,9 @@ bins = [0, 1, 2, 3, 4, 5, 6, 7]
 
 hist = np.array(hist)
 bins = np.array(bins)
+k = np.max(bins)
 
-cdf = hist[:] / np.sum(hist[:]) * np.max(bins)
+cdf = hist[:] / np.sum(hist) * k
 cdf = np.cumsum(cdf)
 cdf = np.round(cdf).astype(int)
 print(cdf)
